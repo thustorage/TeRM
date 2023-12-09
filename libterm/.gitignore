@@ -1,0 +1,25 @@
+# editor and compiler
+.cache
+.idea
+.vscode
+build
+cmake-build-debug
+__pycache__
+
+# linux kernel
+*.cmd
+Module.symvers
+modules.order
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.o
+.tmp*
+
+# log
+*.log
+## ibdump
+*.pcap
+## perf
+*.data

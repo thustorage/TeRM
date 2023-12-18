@@ -1,0 +1,496 @@
+diff --git a/drivers/infiniband/core/umem_odp.c b/drivers/infiniband/core/umem_odp.c
+index aead24c..a6f08f2 100644
+--- a/drivers/infiniband/core/umem_odp.c
++++ b/drivers/infiniband/core/umem_odp.c
+@@ -49,6 +49,89 @@
+ 
+ #include "uverbs.h"
+ 
++#ifdef PDP_MR
++void set_or_clear_bitmap_reserved(void *addr, uint32_t bits, bool set)
++{
++	size_t bitmap_bytes = BITS_TO_LONGS(bits) * sizeof(long);
++	size_t i;
++	for (i = 0; i < bitmap_bytes; i += PAGE_SIZE) {
++		struct page *page = vmalloc_to_page(addr + i);
++		set ? SetPageReserved(page) : ClearPageReserved(page);
++	}
++}
++
++static void *my_bitmap_alloc(unsigned int bits)
++{
++	size_t bytes = BITS_TO_LONGS(bits) * sizeof(long);
++	return vzalloc(round_up(bytes, PAGE_SIZE));
++}
++
++static void my_bitmap_free(void *p)
++{
++	vfree(p);
++}
++
++static int init_pdp(struct ib_umem_odp *umem_odp, size_t npfns)
++{
++	char *magic_page_addr;
++
++	umem_odp->nr_pfns = npfns;
++
++	umem_odp->present_bitmap = my_bitmap_alloc(npfns);
++	// pr_info("umem_odp->present_bitmap=%px", umem_odp->present_bitmap);
++	if (!umem_odp->present_bitmap) {
++		return -ENOMEM;
++	}
++	if (!PAGE_ALIGNED(umem_odp->present_bitmap)) {
++		pr_err("pdp bitmap is not page-aligned!\n");
++		my_bitmap_free(umem_odp->present_bitmap);
++		return -ENOMEM;
++	}
++	// a normal ODP does not need the magic page.
++	if (!umem_odp->is_pdp)
++		return 0;
++	if (umem_odp->page_shift != PAGE_SHIFT) {
++		pr_err("cannot support page_shift(%u) != PAGE_SHIFT(%u)!\n", umem_odp->page_shift, PAGE_SHIFT);
++		return -EFAULT;
++	}
++	umem_odp->magic_page = alloc_page(GFP_KERNEL);
++	if (!umem_odp->magic_page) {
++		my_bitmap_free(umem_odp->present_bitmap);
++		return -ENOMEM;
++	}
++
++	magic_page_addr = kmap(umem_odp->magic_page);
++	memset(magic_page_addr, 0xfd, PAGE_SIZE);
++	kunmap(umem_odp->magic_page);
++
++	umem_odp->magic_page_dma = ib_dma_map_page(umem_odp->umem.ibdev, umem_odp->magic_page,
++		0, PAGE_SIZE, DMA_BIDIRECTIONAL) | ODP_READ_ALLOWED_BIT;
++	if (ib_dma_mapping_error(umem_odp->umem.ibdev, umem_odp->magic_page_dma)) {
++		my_bitmap_free(umem_odp->present_bitmap);
++		__free_page(umem_odp->magic_page);
++		return -EFAULT;
++	}
++
++	set_or_clear_bitmap_reserved(umem_odp->present_bitmap, npfns, true);
++
++	return 0;
++}
++
++static void exit_pdp(struct ib_umem_odp *umem_odp)
++{
++	set_or_clear_bitmap_reserved(umem_odp->present_bitmap, umem_odp->nr_pfns, false);
++
++	my_bitmap_free(umem_odp->present_bitmap);
++	// a normal ODP does not need the magic page.
++	if (!umem_odp->is_pdp) {
++		return;
++	}
++	// we mask ODP_DMA_ADDR_MASK here, to ignore ODP_READ_ALLOWED_BIT | ODP_WRITE_ALLOWED_BIT
++	ib_dma_unmap_page(umem_odp->umem.ibdev, umem_odp->magic_page_dma & ODP_DMA_ADDR_MASK, PAGE_SIZE, DMA_BIDIRECTIONAL);
++	__free_page(umem_odp->magic_page);
++}
++#endif
++
+ static inline int ib_init_umem_odp(struct ib_umem_odp *umem_odp,
+ 				   const struct mmu_interval_notifier_ops *ops)
+ {
+@@ -94,10 +177,20 @@ static inline int ib_init_umem_odp(struct ib_umem_odp *umem_odp,
+ 						   start, end - start, ops);
+ 		if (ret)
+ 			goto out_dma_list;
++
++#ifdef PDP_MR
++		ret = init_pdp(umem_odp, npfns);
++		if (ret)
++			goto out_mmu_notifier;
++#endif	
+ 	}
+ 
+ 	return 0;
+ 
++#ifdef PDP_MR
++out_mmu_notifier:
++	mmu_interval_notifier_remove(&umem_odp->notifier);
++#endif
+ out_dma_list:
+ 	kvfree(umem_odp->dma_list);
+ out_pfn_list:
+@@ -236,6 +329,12 @@ struct ib_umem_odp *ib_umem_odp_get(struct ib_device *device,
+ 	if (!umem_odp)
+ 		return ERR_PTR(-ENOMEM);
+ 
++#ifdef PDP_MR
++	umem_odp->is_pdp = (access & PDP_ACCESS_PDP);
++	pr_info("[%s]: addr=0x%lx, size=0x%lx, mode=%s\n", 
++		__func__, addr, size, umem_odp->is_pdp ? "PDP" : "ODP");
++#endif
++
+ 	umem_odp->umem.ibdev = device;
+ 	umem_odp->umem.length = size;
+ 	umem_odp->umem.address = addr;
+@@ -278,6 +377,13 @@ void ib_umem_odp_release(struct ib_umem_odp *umem_odp)
+ 		mmu_interval_notifier_remove(&umem_odp->notifier);
+ 		kvfree(umem_odp->dma_list);
+ 		kvfree(umem_odp->pfn_list);
++#ifdef PDP_MR
++		if (umem_odp->pde) {
++			proc_remove(umem_odp->pde);
++			umem_odp->pde = NULL;
++		}
++		exit_pdp(umem_odp);
++#endif
+ 	}
+ 	put_pid(umem_odp->tgid);
+ 	kfree(umem_odp);
+@@ -304,6 +410,19 @@ static int ib_umem_odp_map_dma_single_page(
+ 	struct ib_device *dev = umem_odp->umem.ibdev;
+ 	dma_addr_t *dma_addr = &umem_odp->dma_list[dma_index];
+ 
++#ifdef PDP_MR
++	// if (access_mask & ODP_WRITE_ALLOWED_BIT)
++	set_bit(dma_index, umem_odp->present_bitmap);
++	if (!umem_odp->is_pdp && *dma_addr) {
++		/*
++		 * If the page is already dma mapped it means it went through
++		 * a non-invalidating trasition, like read-only to writable.
++		 * Resync the flags.
++		 */
++		*dma_addr = (*dma_addr & ODP_DMA_ADDR_MASK) | access_mask;
++		return 0;
++	}
++#else
+ 	if (*dma_addr) {
+ 		/*
+ 		 * If the page is already dma mapped it means it went through
+@@ -313,7 +432,10 @@ static int ib_umem_odp_map_dma_single_page(
+ 		*dma_addr = (*dma_addr & ODP_DMA_ADDR_MASK) | access_mask;
+ 		return 0;
+ 	}
++#endif
+ 
++// yz: dma_addr might be magic!
++// we simply map the page again.
+ 	*dma_addr = ib_dma_map_page(dev, page, 0, 1 << umem_odp->page_shift,
+ 				    DMA_BIDIRECTIONAL);
+ 	if (ib_dma_mapping_error(dev, *dma_addr)) {
+@@ -390,7 +512,7 @@ int ib_umem_odp_map_dma_and_lock(struct ib_umem_odp *umem_odp, u64 user_virt,
+ 	}
+ 
+ 	range.hmm_pfns = &(umem_odp->pfn_list[pfn_start_idx]);
+-	timeout = jiffies + msecs_to_jiffies(HMM_RANGE_DEFAULT_TIMEOUT);
++	timeout = jiffies + msecs_to_jiffies(10000); // HMM_RANGE_DEFAULT_TIMEOUT 1000
+ 
+ retry:
+ 	current_seq = range.notifier_seq =
+@@ -426,7 +548,17 @@ retry:
+ 			WARN_ON(!(range.hmm_pfns[pfn_index] & HMM_PFN_VALID));
+ 		} else {
+ 			if (!(range.hmm_pfns[pfn_index] & HMM_PFN_VALID)) {
++#ifdef PDP_MR
++			if (umem_odp->is_pdp) {
++				dma_addr_t *dma = &umem_odp->dma_list[dma_index];
++				WARN_ON(*dma && *dma != umem_odp->magic_page_dma);
++				*dma = umem_odp->magic_page_dma; // ODP_READ_ALLOWED_BIT has been set.
++			} else {
++				WARN_ON(umem_odp->dma_list[dma_index]);
++			}
++#else				
+ 				WARN_ON(umem_odp->dma_list[dma_index]);
++#endif				
+ 				continue;
+ 			}
+ 			access_mask = ODP_READ_ALLOWED_BIT;
+@@ -487,6 +619,11 @@ void ib_umem_odp_unmap_dma_pages(struct ib_umem_odp *umem_odp, u64 virt,
+ 		idx = (addr - ib_umem_start(umem_odp)) >> umem_odp->page_shift;
+ 		dma = umem_odp->dma_list[idx];
+ 
++#ifdef PDP_MR
++		clear_bit(idx, umem_odp->present_bitmap);
++		if (umem_odp->is_pdp && is_magic_page_dma(umem_odp, dma)) continue;
++#endif		
++
+ 		/* The access flags guaranteed a valid DMA address in case was NULL */
+ 		if (dma) {
+ 			unsigned long pfn_idx = (addr - ib_umem_start(umem_odp)) >> PAGE_SHIFT;
+@@ -509,7 +646,15 @@ void ib_umem_odp_unmap_dma_pages(struct ib_umem_odp *umem_odp, u64 virt,
+ 				 */
+ 				set_page_dirty(head_page);
+ 			}
++#ifdef PDP_MR
++			if (umem_odp->is_pdp) {
++				umem_odp->dma_list[idx] = umem_odp->magic_page_dma;
++			} else {
++				umem_odp->dma_list[idx] = 0;
++			}
++#else
+ 			umem_odp->dma_list[idx] = 0;
++#endif			
+ 			umem_odp->npages--;
+ 		}
+ 	}
+diff --git a/drivers/infiniband/hw/mlx5/mr.c b/drivers/infiniband/hw/mlx5/mr.c
+index 368f3c4..4fdb739 100644
+--- a/drivers/infiniband/hw/mlx5/mr.c
++++ b/drivers/infiniband/hw/mlx5/mr.c
+@@ -1442,6 +1442,69 @@ static struct ib_mr *create_real_mr(struct ib_pd *pd, struct ib_umem *umem,
+ 	return &mr->ibmr;
+ }
+ 
++#ifdef PDP_MR
++static vm_fault_t proc_fault(struct vm_fault *vmf)
++{
++	struct ib_umem_odp *odp = vmf->vma->vm_private_data;
++	void *kaddr =  (void *)odp->present_bitmap + vmf->pgoff * PAGE_SIZE;
++	struct page *page = vmalloc_to_page(kaddr);
++
++	get_page(page);
++	vmf->page = page;
++
++	return 0;
++}
++
++static struct vm_operations_struct proc_vm_ops = {
++	.fault = proc_fault
++};
++static int proc_mmap(struct file *file, struct vm_area_struct *vma)
++{
++	struct ib_umem_odp *odp = pde_data(file_inode(file));
++
++	if (!odp->present_bitmap) {
++		pr_err("odp->present_bitmap=NULL\n");
++		return -EINVAL;
++	}
++	pr_info("[odp mr bitmap]: mmap from virt=0x%px\n", odp->present_bitmap);
++
++	vma->vm_private_data = odp;
++	vma->vm_ops = &proc_vm_ops;
++
++	return 0;
++}
++
++static ssize_t proc_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
++{
++	struct ib_umem_odp *odp = pde_data(file_inode(file));
++	if (copy_to_user(buf, &odp->nr_pfns, sizeof(odp->nr_pfns))) {
++		return -EINVAL;
++	}
++
++	return sizeof(odp->nr_pfns);
++}
++
++static const struct proc_ops proc_ops = {
++	.proc_mmap = proc_mmap,
++	.proc_read = proc_read
++};
++
++static int proc_init(u32 key, struct ib_umem_odp *odp)
++{
++	struct proc_dir_entry *entry;
++	char name[256];
++
++	sprintf(name, "pdp_bitmap_0x%x", key);
++
++	entry = proc_create_data(name, S_IFREG | S_IRUGO, NULL, &proc_ops, odp);
++	if (!entry) {
++		return -ENOMEM;
++	}
++	odp->pde = entry;
++
++	return 0;
++}
++#endif
+ static struct ib_mr *create_user_odp_mr(struct ib_pd *pd, u64 start, u64 length,
+ 					u64 iova, int access_flags,
+ 					struct ib_udata *udata)
+@@ -1493,6 +1556,13 @@ static struct ib_mr *create_user_odp_mr(struct ib_pd *pd, u64 start, u64 length,
+ 	err = mlx5_ib_init_odp_mr(mr);
+ 	if (err)
+ 		goto err_dereg_mr;
++
++#ifdef PDP_MR
++	err = proc_init(mr->mmkey.key, odp);
++	if (err)
++		goto err_dereg_mr;
++#endif
++	
+ 	return &mr->ibmr;
+ 
+ err_dereg_mr:
+diff --git a/drivers/infiniband/hw/mlx5/odp.c b/drivers/infiniband/hw/mlx5/odp.c
+index e3a3e7a..5274801 100644
+--- a/drivers/infiniband/hw/mlx5/odp.c
++++ b/drivers/infiniband/hw/mlx5/odp.c
+@@ -36,6 +36,9 @@
+ #include <linux/dma-buf.h>
+ #include <linux/dma-resv.h>
+ 
++// yz fix bug
++#include <linux/sched/mm.h>
++
+ #include "mlx5_ib.h"
+ #include "cmd.h"
+ #include "qp.h"
+@@ -167,6 +170,15 @@ static void populate_mtt(__be64 *pas, size_t idx, size_t nentries,
+ 
+ 	for (i = 0; i < nentries; i++) {
+ 		pa = odp->dma_list[idx + i];
++#ifdef PDP_MR
++		if (odp->is_pdp) {
++			WARN_ON(pa == 0); // with PDP, pa should never be 0!
++			if ((pa & ODP_READ_ALLOWED_BIT) == 0) {
++				// read is not allowed => magic dma
++				pa = odp->magic_page_dma;
++			}
++		}
++#endif
+ 		pas[i] = cpu_to_be64(umem_dma_to_mtt(pa));
+ 	}
+ }
+@@ -269,12 +281,26 @@ static bool mlx5_ib_invalidate_range(struct mmu_interval_notifier *mni,
+ 		 * estimate the cost of another UMR vs. the cost of bigger
+ 		 * UMR.
+ 		 */
++		
++
++#ifdef PDP_MR
++		if ((umem_odp->dma_list[idx] & (ODP_READ_ALLOWED_BIT | ODP_WRITE_ALLOWED_BIT)) && 
++			!(umem_odp->is_pdp && is_magic_page_dma(umem_odp, umem_odp->dma_list[idx]))) {
++#else
+ 		if (umem_odp->dma_list[idx] &
+ 		    (ODP_READ_ALLOWED_BIT | ODP_WRITE_ALLOWED_BIT)) {
++#endif
+ 			if (!in_block) {
+ 				blk_start_idx = idx;
+ 				in_block = 1;
+ 			}
++#ifdef PDP_MR
++			if (umem_odp->is_pdp) {
++				umem_odp->dma_list[idx] &= (~ODP_READ_ALLOWED_BIT); 
++				// clear the READ bit for magic_dma! READ is always set for a normal address
++				// we leave the dma_addr intact for correct unmap.
++			}
++#endif
+ 
+ 			/* Count page invalidations */
+ 			invalidations += idx - blk_start_idx + 1;
+@@ -284,7 +310,12 @@ static bool mlx5_ib_invalidate_range(struct mmu_interval_notifier *mni,
+ 			if (in_block && umr_offset == 0) {
+ 				mlx5_ib_update_xlt(mr, blk_start_idx,
+ 						   idx - blk_start_idx, 0,
++#ifdef PDP_MR
++							// set instead of clear
++							(umem_odp->is_pdp ? 0 : MLX5_IB_UPD_XLT_ZAP) | 
++#else
+ 						   MLX5_IB_UPD_XLT_ZAP |
++#endif
+ 						   MLX5_IB_UPD_XLT_ATOMIC);
+ 				in_block = 0;
+ 			}
+@@ -293,7 +324,12 @@ static bool mlx5_ib_invalidate_range(struct mmu_interval_notifier *mni,
+ 	if (in_block)
+ 		mlx5_ib_update_xlt(mr, blk_start_idx,
+ 				   idx - blk_start_idx + 1, 0,
++#ifdef PDP_MR
++				   // set instead of clear
++				   (umem_odp->is_pdp ? 0 : MLX5_IB_UPD_XLT_ZAP) | 
++#else
+ 				   MLX5_IB_UPD_XLT_ZAP |
++#endif
+ 				   MLX5_IB_UPD_XLT_ATOMIC);
+ 
+ 	mlx5_update_odp_stats(mr, invalidations, invalidations);
+@@ -568,17 +604,37 @@ static int pagefault_real_mr(struct mlx5_ib_mr *mr, struct ib_umem_odp *odp,
+ 
+ 	if (odp->umem.writable && !downgrade)
+ 		access_mask |= ODP_WRITE_ALLOWED_BIT;
++	
++	// yz fix: there is a bug here!
++	{
++		struct task_struct *owning_process = get_pid_task(odp->tgid, PIDTYPE_PID);
++		struct mm_struct *owning_mm = odp->umem.owning_mm;
++
++		if (!owning_process) {
++			return -EINVAL;
++		}
++		if (!mmget_not_zero(owning_mm)) {
++			put_task_struct(owning_process);
++			return -EINVAL;
++		}
+ 
+-	np = ib_umem_odp_map_dma_and_lock(odp, user_va, bcnt, access_mask, fault);
+-	if (np < 0)
+-		return np;
++		np = ib_umem_odp_map_dma_and_lock(odp, user_va, bcnt, access_mask, fault);
++		if (np < 0) {
++			mmput(owning_mm);
++			put_task_struct(owning_process);
++			return np;
++		}
+ 
+-	/*
+-	 * No need to check whether the MTTs really belong to this MR, since
+-	 * ib_umem_odp_map_dma_and_lock already checks this.
+-	 */
+-	ret = mlx5_ib_update_xlt(mr, start_idx, np, page_shift, xlt_flags);
+-	mutex_unlock(&odp->umem_mutex);
++		/*
++		* No need to check whether the MTTs really belong to this MR, since
++		* ib_umem_odp_map_dma_and_lock already checks this.
++		*/
++		ret = mlx5_ib_update_xlt(mr, start_idx, np, page_shift, xlt_flags);
++		mutex_unlock(&odp->umem_mutex);
++
++		mmput(owning_mm);
++		put_task_struct(owning_process);
++	}
+ 
+ 	if (ret < 0) {
+ 		if (ret != -EAGAIN)
+diff --git a/include/rdma/ib_umem_odp.h b/include/rdma/ib_umem_odp.h
+index 0844c1d..15aaadd 100644
+--- a/include/rdma/ib_umem_odp.h
++++ b/include/rdma/ib_umem_odp.h
+@@ -9,6 +9,12 @@
+ #include <rdma/ib_umem.h>
+ #include <rdma/ib_verbs.h>
+ 
++#define PDP_MR
++#ifdef PDP_MR
++#include <linux/proc_fs.h>
++#define PDP_ACCESS_PDP (IB_ACCESS_RELAXED_ORDERING << 1) // caution if a future version uses this bit!
++#endif
++
+ struct ib_umem_odp {
+ 	struct ib_umem umem;
+ 	struct mmu_interval_notifier notifier;
+@@ -42,6 +48,15 @@ struct ib_umem_odp {
+ 	bool is_implicit_odp;
+ 
+ 	unsigned int		page_shift;
++	
++#ifdef PDP_MR
++	bool is_pdp; // ODP / PDP 
++	struct page *magic_page;
++	dma_addr_t magic_page_dma; // ODP_READ_ALLOWED_BIT is set!
++	unsigned long *present_bitmap; // 1: mapped in the RNIC page table, 0: unmapped
++	struct proc_dir_entry *pde;
++	u32 nr_pfns;
++#endif	
+ };
+ 
+ static inline struct ib_umem_odp *to_ib_umem_odp(struct ib_umem *umem)
+@@ -80,6 +95,16 @@ static inline size_t ib_umem_odp_num_pages(struct ib_umem_odp *umem_odp)
+ 
+ #define ODP_DMA_ADDR_MASK (~(ODP_READ_ALLOWED_BIT | ODP_WRITE_ALLOWED_BIT))
+ 
++#ifdef PDP_MR
++static inline bool is_magic_page_dma(struct ib_umem_odp *umem_odp, dma_addr_t addr)
++{
++	WARN_ON(!umem_odp->is_pdp); // a normal ODP should never reach here.
++
++	// we AND ODP_DMA_ADDR_MASK to ignore the lower two bits.
++	return (umem_odp->magic_page_dma & ODP_DMA_ADDR_MASK) == (addr & ODP_DMA_ADDR_MASK);
++}
++#endif
++
+ #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
+ 
+ struct ib_umem_odp *

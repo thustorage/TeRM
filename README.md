@@ -44,7 +44,14 @@ Then, build the driver.
 
 ## Build libterm
 We provide `CMakeLists.txt` for building.
-It produces two outputs, the userspace shared library `libpdp.so` and a perf program `perf`.
+It produces two outputs, the userspace shared library `libpdp.so` and a program `perf`.
+Please copy two files to `ae/bin` before running AE scripts.
+```
+$ cd libterm
+$ mkdir -p build && cd build
+$ cmake .. -DCMAKE_BUILD_TYPE=Release # Release for compiler optimizations and high performance
+$ make -j
+```
 
 # How to use
 1. Replace the modified driver `*.ko` files and restart the `openibd` service.

@@ -1,0 +1,22 @@
+[general_config]
+port   = 8888
+
+[[client]]
+id   = 1
+host = "node166"
+
+[[client]]
+id   = 2
+host = "node168"
+
+[master]
+host = "node181"
+
+
+## server config
+
+[[server]]
+host    = "node184"
+
+[server_config]
+db_type = "ycsbh"

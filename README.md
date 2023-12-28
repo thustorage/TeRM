@@ -57,7 +57,7 @@ $ make -j
 1. Replace the modified driver `*.ko` files and restart the `openibd` service.
 2. Restart the `memcached` instance. We provide a script `ae/bin/reset-memc.sh` to do so.
 3. `mmap` an SSD in the RDMA program with `MAP_SHARED` and `ibv_reg_mr` the memory area as an `ODP MR`.
-4. Set `LD_PRELOAD=libpdp.so` to enable TeRM. Also set enviroment variables `PDP_server_mmap_dev=nvmeXnY` for the SSD backend and `PDP_server_memory_gb=Z` for the size of the mapped area. Set `PDP_is_server` if and only if for the server side.
+4. Set `LD_PRELOAD=libpdp.so` to enable TeRM. Also set enviroment variables `PDP_server_mmap_dev=nvmeXnY` for the SSD backend and `PDP_server_memory_gb=Z` for the size of the mapped area. Set `PDP_is_server=1` if and only if for the server side.
 5. Run the RDMA application.
 
 libterm accepts a series of environment variables for configuration. Please refer to `libterm/ibverbs-pdp/global.cc` for more details.

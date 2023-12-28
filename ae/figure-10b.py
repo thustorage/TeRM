@@ -5,6 +5,7 @@ kwargs = {
     "name": "figure-10b",
     "mode": ["rpc_memcpy", "rpc_buffer", "rpc_direct", "rpc_tiering", "rpc_tiering_promote", "pdp"],
     "sz_unit": "4k",
+    "nr_server_threads": 8,
     "xlabel": "",
     "xdata": ["Read 4KB"],
     "legend": ["RPC", "RPC_buffer", "RPC_direct", "+tiering", "+hotspot", "+magic"]

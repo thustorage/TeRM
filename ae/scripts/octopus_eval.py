@@ -84,7 +84,10 @@ def run_batch(name : str, **kwargs):
     from itertools import product
     l = list(dict(zip(vector_kwargs.keys(), values)) for values in product(*vector_kwargs.values()))
     for idx, kv in enumerate(l):
-        print(f"### Running ({idx + 1}/{len(l)}): {kv} ###")
+        str = f"### Running ({idx + 1}/{len(l)}): {kv} ###"
+        with open("./output/current-running.txt", "w") as f:
+            f.write(f"{name}\n{str}\n")
+        print(str)
         run_test(**kv, **scalar_kwargs, log_dir=log_dir)
     
     

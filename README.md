@@ -38,9 +38,14 @@ The source code is in `class Schedule` of file `libterm/include/util.hh`.
 Please modify the constants according to your CPU hardware.
 
 ## Build the driver
-Download the source code of the driver from the official website.
-Parse and patch the modifications listed in `driver/driver.path`.
+There are two ways to build the driver. We provide an out-of-the-box driver zip file in the second choice.
+
+1. Download the source code of the driver from the official website.
+Apply official backport batches first and then patch the modifications listed in `driver/driver.patch`.
 Then, build the driver.
+Please note that, we apply minimum number of patches, instead of all patches, that make it work for our environment. One shall not `git apply` the `driver/driver.patch` directly, because line numbers may differ. One should parse and patch it manually.
+
+2. Use `driver/mlnx-ofed-kernel-5.8-2.0.3.0.zip`. Unzip it and run the contained `build.sh`.
 
 ## Build libterm
 We provide `CMakeLists.txt` for building.

@@ -12,6 +12,7 @@ def run_test(mode : str = "pdp", zipf_theta = 0, log_dir : str = "."):
         prefix_cmd = \"\"\"echo 3 > /proc/sys/vm/drop_caches; 
         echo 100 > /proc/sys/vm/dirty_ratio; 
         echo 0 > /proc/sys/kernel/numa_balancing; 
+        systemctl start opensmd;
         export LD_PRELOAD="/home/yz/workspace/TeRM/ae/bin/libpdp.so";
         export LD_LIBRARY_PATH="/home/yz/workspace/TeRM/ae/bin/xstore"; 
         export PDP_server_rpc_threads=16 PDP_server_mmap_dev=nvme4n1 PDP_server_memory_gb={server_memory_gb};

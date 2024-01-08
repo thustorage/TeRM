@@ -11,6 +11,20 @@ kwargs = {
     "legend": ["PIN", "ODP", "RPC", "TeRM"]
 }
 
+
 e = octopus_eval.Experiment(**kwargs)
 e.run()
 e.output()
+
+# rerun a data point
+# kwargs = {
+#     "name": "figure-16",
+#     "mode": ["rpc"],
+#     "write": [1],
+#     "unit_size": ["16k"],
+#     "xlabel": "", # for output(), no need to edit
+#     "xdata": ["Write 16KB"], # for output(), no need to edit
+#     "legend": ["RPC"] # for output(), no need to edit
+# }
+# e = octopus_eval.Experiment(**kwargs)
+# e.run()

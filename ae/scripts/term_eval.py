@@ -18,6 +18,7 @@ def run_test(write_percent = 0, skewness_100 = 99, server_memory_gb = 32, ssd = 
         prefix_cmd = \"\"\"echo 3 > /proc/sys/vm/drop_caches; 
         echo 100 > /proc/sys/vm/dirty_ratio; 
         echo 0 > /proc/sys/kernel/numa_balancing; 
+        systemctl start opensmd;
         export LD_PRELOAD=/home/yz/workspace/TeRM/ae/bin/libpdp.so; 
         export PDP_server_rpc_threads={nr_server_threads} PDP_server_mmap_dev={ssd} PDP_server_memory_gb={server_memory_gb};
         export PDP_mode={mode};\"\"\"

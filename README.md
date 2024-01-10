@@ -1,4 +1,4 @@
-# TeRM: Extending RDMA-Attached Memory with SSD
+# TeRM: Ex<ins>te</ins>nding <ins>R</ins>DMA-Attached <ins>M</ins>emory with SSD
 
 This is the open-source repository for our paper
  **TeRM: Extending RDMA-Attached Memory with SSD** to appear on [FAST'24](https://www.usenix.org/conference/fast24/presentation/yang-zhe).

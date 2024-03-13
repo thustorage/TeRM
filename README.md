@@ -4,7 +4,7 @@ This is the open-source repository for our paper
  **TeRM: Extending RDMA-Attached Memory with SSD** on [FAST'24](https://www.usenix.org/conference/fast24/presentation/yang-zhe).
 To cite our paper:
 ```
-@inproceedings {294775,
+@inproceedings {fast24-term,
 author = {Zhe Yang and Qing Wang and Xiaojian Liao and Youyou Lu and Keji Huang and Jiwu Shu},
 title = {{TeRM}: Extending {RDMA-Attached} Memory with {SSD}},
 booktitle = {22nd USENIX Conference on File and Storage Technologies (FAST 24)},

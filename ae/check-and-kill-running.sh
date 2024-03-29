@@ -1,7 +1,7 @@
 #!/bin/bash
 
 running=0
-pattern="'tmp/memcached|scripts/bootstrap.py|scripts/bootstrap-octopus.py|scripts/bootstrap-xstore.py|figure|octopus|xstore|mpibw|dmfs|fserver|master|ycsb|perf'"
+pattern="'run-all.sh|tmp/memcached|scripts/bootstrap.py|scripts/bootstrap-octopus.py|scripts/bootstrap-xstore.py|figure|octopus|xstore|mpibw|dmfs|fserver|master|ycsb|perf'"
 check_cmd="pgrep -fa $pattern"
 
 echo "--- node166 ---"

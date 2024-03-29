@@ -1,7 +1,22 @@
 # TeRM: Ex<ins>te</ins>nding <ins>R</ins>DMA-Attached <ins>M</ins>emory with SSD
 
 This is the open-source repository for our paper
- **TeRM: Extending RDMA-Attached Memory with SSD** to appear on [FAST'24](https://www.usenix.org/conference/fast24/presentation/yang-zhe).
+ **TeRM: Extending RDMA-Attached Memory with SSD** on [FAST'24](https://www.usenix.org/conference/fast24/presentation/yang-zhe).
+To cite our paper:
+```
+@inproceedings {fast24-term,
+author = {Zhe Yang and Qing Wang and Xiaojian Liao and Youyou Lu and Keji Huang and Jiwu Shu},
+title = {{TeRM}: Extending {RDMA-Attached} Memory with {SSD}},
+booktitle = {22nd USENIX Conference on File and Storage Technologies (FAST 24)},
+year = {2024},
+isbn = {978-1-939133-38-0},
+address = {Santa Clara, CA},
+pages = {1--16},
+url = {https://www.usenix.org/conference/fast24/presentation/yang-zhe},
+publisher = {USENIX Association},
+month = feb
+}
+```
 
 Notably, the codename of TeRM is `PDP`.
 

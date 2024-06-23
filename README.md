@@ -18,7 +18,7 @@ month = feb
 }
 ```
 
-Notably, the codename of TeRM is `PDP`.
+Notably, the codename of TeRM is `PDP` (one step further beyond ODP).
 
 # Directory structure
 ```

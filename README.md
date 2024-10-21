@@ -1,22 +1,7 @@
 # TeRM: Ex<ins>te</ins>nding <ins>R</ins>DMA-Attached <ins>M</ins>emory with SSD
 
 This is the open-source repository for our paper
- **TeRM: Extending RDMA-Attached Memory with SSD** on [FAST'24](https://www.usenix.org/conference/fast24/presentation/yang-zhe).
-To cite our paper:
-```
-@inproceedings {fast24-term,
-author = {Zhe Yang and Qing Wang and Xiaojian Liao and Youyou Lu and Keji Huang and Jiwu Shu},
-title = {{TeRM}: Extending {RDMA-Attached} Memory with {SSD}},
-booktitle = {22nd USENIX Conference on File and Storage Technologies (FAST 24)},
-year = {2024},
-isbn = {978-1-939133-38-0},
-address = {Santa Clara, CA},
-pages = {1--16},
-url = {https://www.usenix.org/conference/fast24/presentation/yang-zhe},
-publisher = {USENIX Association},
-month = feb
-}
-```
+ **TeRM: Extending RDMA-Attached Memory with SSD** on [FAST'24](https://www.usenix.org/conference/fast24/presentation/yang-zhe) and [ACM Transactions on Storage](https://dl.acm.org/doi/10.1145/3700772).
 
 Notably, the codename of TeRM is `PDP` (one step further beyond ODP).
 
@@ -95,4 +80,33 @@ $ make -j
 
 libterm accepts a series of environment variables for configuration. Please refer to `libterm/ibverbs-pdp/global.cc` for more details.
 
-If you have further questions and interests about the repository, please feel free to propose an issue or contact me via email (zheyang.zy AT outlook.com). You can find my github at [yzim](https://github.com/yzim).
+If you have further questions and interests about the repository, please feel free to propose an issue or contact me via email (yangzhe.ac AT outlook.com). You can find my github at [yzim](https://github.com/yzim).
+
+To cite our paper:
+```
+@inproceedings {fast24-term,
+author = {Zhe Yang and Qing Wang and Xiaojian Liao and Youyou Lu and Keji Huang and Jiwu Shu},
+title = {{TeRM}: Extending {RDMA-Attached} Memory with {SSD}},
+booktitle = {22nd USENIX Conference on File and Storage Technologies (FAST 24)},
+year = {2024},
+isbn = {978-1-939133-38-0},
+address = {Santa Clara, CA},
+pages = {1--16},
+url = {https://www.usenix.org/conference/fast24/presentation/yang-zhe},
+publisher = {USENIX Association},
+month = feb
+}
+
+@article{tos24-term,
+author = {Yang, Zhe and Wang, Qing and Liao, Xiaojian and Lu, Youyou and Huang, Keji and Shu, Jiwu},
+title = {Efficiently Enlarging RDMA-Attached Memory with SSD},
+year = {2024},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+issn = {1553-3077},
+url = {https://doi.org/10.1145/3700772},
+doi = {10.1145/3700772},
+journal = {ACM Trans. Storage},
+month = oct
+}
+```
